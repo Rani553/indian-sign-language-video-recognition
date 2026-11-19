@@ -1,0 +1,5 @@
+# Copy this file to configs/include50_classes.txt and put ONE class (folder name
+# without the number prefix, e.g. "loud") per line to use the official
+# INCLUDE-50 class list. If configs/include50_classes.txt does not exist, the
+# split script picks 50 classes automatically (see dataset.subset_strategy) and
+# writes the chosen list to processed/splits/classes.txt.
