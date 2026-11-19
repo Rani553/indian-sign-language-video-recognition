@@ -1,0 +1,43 @@
+# Shared data settings (owned by Member 1). Every model config inherits this file.
+paths:
+  data_root: auto        # auto = Colab Drive / Kaggle working dir / ./data (or $ISL_DATA_ROOT)
+  results_root: auto     # auto = Drive isl_results / /kaggle/working/results / ./results
+  raw_dir: raw           # extracted INCLUDE videos
+  processed_dir: processed   # On Kaggle you can set this to /kaggle/input/<your-processed-dataset>
+  # frames_dir, keypoints_dir, splits_dir default to processed_dir/{frames,keypoints,splits}
+
+dataset:
+  name: include50
+  zenodo_record: 4010759   # INCLUDE on Zenodo (verify on zenodo.org before downloading)
+  class_list: configs/include50_classes.txt   # one class name per line; if missing -> subset_strategy
+  num_classes: 50
+  subset_strategy: most_videos   # most_videos | random   (used only when class_list is missing)
+  val_size: 0.15
+  test_size: 0.15
+  min_videos_per_class: 3
+  seed: 42
+
+frames:
+  stored_frames: 24      # frames saved per video by extract_frames.py
+  stored_size: 224       # saved resolution (square)
+  resize_mode: pad       # pad (letterbox) | center_crop | stretch
+  num_frames: 16         # frames fed to the model
+  image_size: 224        # model input resolution
+  workers: 2
+
+keypoints:
+  frame_stride: 1        # run MediaPipe on every n-th frame
+  model_complexity: 1    # MediaPipe Holistic 0/1/2
+  max_side: 640          # downscale frames before MediaPipe (speed)
+  num_frames: 32         # frames fed to the model after resampling
+  parts: [pose, left_hand, right_hand]   # add "face" only if extracted with --face
+  hand_relative: true    # extra wrist-relative hand coordinates
+  use_velocity: true     # add frame-to-frame differences
+  workers: 2
+
+data:
+  tiny: false            # --tiny switches this on (5 classes, few videos)
+  tiny_classes: 5
+  tiny_videos_per_class: 4
+
+seed: 42
