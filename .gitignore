@@ -1,0 +1,31 @@
+# data and outputs are NEVER committed (share via Drive / Kaggle datasets)
+data/*
+!data/README.md
+results/*
+!results/.gitkeep
+*.pt
+*.pth
+*.npy
+*.npz
+*.zip
+*.mov
+*.MOV
+*.mp4
+
+# python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+*.egg-info/
+.venv/
+venv/
+.env
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+
+# local config
+configs/include50_classes.txt.bak

@@ -1,0 +1,14 @@
+# Core requirements (training, evaluation, demo).
+# torch/torchvision are preinstalled on Colab and Kaggle - do not reinstall them there.
+torch>=2.1
+torchvision>=0.16
+numpy
+pandas
+scikit-learn
+matplotlib
+pyyaml
+opencv-python-headless
+tensorboard
+tabulate
+streamlit
+pytest

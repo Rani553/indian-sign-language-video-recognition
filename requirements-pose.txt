@@ -1,0 +1,7 @@
+# Only needed for MediaPipe keypoint extraction (Pipeline B preprocessing) and for
+# running the pose models on raw videos (demo / end-to-end benchmark).
+#
+# mediapipe 0.10.30+ REMOVED the `mp.solutions.holistic` API used here.
+# 0.10.21 is verified to work on Python 3.12. It installs numpy<2, so on Colab
+# restart the runtime after installing (Runtime -> Restart session).
+mediapipe==0.10.21
