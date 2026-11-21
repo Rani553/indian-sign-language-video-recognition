@@ -6,10 +6,12 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+# File types treated as videos (INCLUDE mostly uses .MOV).
 VIDEO_EXTENSIONS = {".mov", ".mp4", ".avi", ".mkv", ".webm", ".m4v"}
 
 
 def video_info(path: str | Path) -> dict:
+    """Return basic facts about a video (frame count, fps, size, duration) without decoding it."""
     cap = cv2.VideoCapture(str(path))
     info = {
         "frames": int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
@@ -28,18 +30,19 @@ def read_video(path: str | Path, stride: int = 1, max_side: int | None = None) -
     cap = cv2.VideoCapture(str(path))
     if not cap.isOpened():
         raise IOError(f"Cannot open video: {path}")
-    frames, i = [], 0
+    frames, i = [], 0  # i = index of the current frame in the video
     while True:
         ok, frame = cap.read()
         if not ok:
-            break
+            break  # end of the video
         if i % stride == 0:
             if max_side is not None:
                 h, w = frame.shape[:2]
                 scale = max_side / max(h, w)
-                if scale < 1.0:
+                if scale < 1.0:  # only shrink, never enlarge
                     frame = cv2.resize(frame, (int(w * scale), int(h * scale)),
                                        interpolation=cv2.INTER_AREA)
+            # OpenCV gives BGR colour order; models and MediaPipe expect RGB.
             frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         i += 1
     cap.release()
@@ -50,6 +53,7 @@ def read_video(path: str | Path, stride: int = 1, max_side: int | None = None) -
 
 def uniform_indices(num_available: int, num_samples: int) -> np.ndarray:
     """Evenly spaced indices; repeats frames when the clip is too short."""
+    # Example: 100 frames, 5 samples -> [0, 25, 50, 74, 99].
     if num_available <= 0:
         raise ValueError("Video has no frames")
     return np.linspace(0, num_available - 1, num_samples).round().astype(int)
@@ -61,8 +65,11 @@ def random_segment_indices(num_available: int, num_samples: int,
     pick one random frame from each (temporal augmentation for training)."""
     rng = rng or np.random.default_rng()
     if num_available < num_samples:
+        # Too few frames to make segments: fall back to even spacing.
         return uniform_indices(num_available, num_samples)
+    # Segment borders, e.g. 100 frames, 4 samples -> [0, 25, 50, 75, 100].
     edges = np.linspace(0, num_available, num_samples + 1)
+    # Each segment is [start, end); "end" is at least start + 1 so it is never empty.
     starts, ends = edges[:-1].astype(int), np.maximum(edges[1:].astype(int), edges[:-1].astype(int) + 1)
     return np.array([rng.integers(s, e) for s, e in zip(starts, ends)])
 
@@ -75,11 +82,13 @@ def resize_frame(frame: np.ndarray, size: int, mode: str = "pad") -> np.ndarray:
     """
     h, w = frame.shape[:2]
     if mode == "center_crop":
+        # Cut the largest square from the middle, then resize it.
         side = min(h, w)
         y0, x0 = (h - side) // 2, (w - side) // 2
         frame = frame[y0:y0 + side, x0:x0 + side]
         return cv2.resize(frame, (size, size), interpolation=cv2.INTER_AREA)
     if mode == "pad":
+        # Resize so the longer side fits, then place it in the middle of a black square.
         scale = size / max(h, w)
         nh, nw = max(1, round(h * scale)), max(1, round(w * scale))
         resized = cv2.resize(frame, (nw, nh), interpolation=cv2.INTER_AREA)
@@ -88,6 +97,7 @@ def resize_frame(frame: np.ndarray, size: int, mode: str = "pad") -> np.ndarray:
         canvas[y0:y0 + nh, x0:x0 + nw] = resized
         return canvas
     if mode == "stretch":
+        # Resize directly to a square (distorts the shape of the signer).
         return cv2.resize(frame, (size, size), interpolation=cv2.INTER_AREA)
     raise ValueError(f"Unknown resize mode: {mode}")
 
@@ -95,5 +105,5 @@ def resize_frame(frame: np.ndarray, size: int, mode: str = "pad") -> np.ndarray:
 def sample_and_resize(path: str | Path, num_frames: int, size: int, mode: str = "pad") -> np.ndarray:
     """Read a video and return ``(num_frames, size, size, 3)`` uint8."""
     frames = read_video(path)
-    idx = uniform_indices(len(frames), num_frames)
+    idx = uniform_indices(len(frames), num_frames)  # which frames to keep
     return np.stack([resize_frame(frames[i], size, mode) for i in idx])

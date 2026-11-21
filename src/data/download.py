@@ -33,43 +33,56 @@ from src.utils.config import add_common_args, config_from_args, resolve_paths
 from src.utils.logger import get_logger
 
 log = get_logger("download")
+# Zenodo API address that returns the list of files in a record (as JSON).
 ZENODO_API = "https://zenodo.org/api/records/{record}"
 
 
 def clean_label(folder_name: str) -> str:
     """'12. Loud' -> 'loud'. INCLUDE class folders start with a number."""
+    # Remove the leading number and its separator (".", ")", "_" or "-").
     name = re.sub(r"^\s*\d+\s*[.)_-]?\s*", "", folder_name)
     return name.strip().lower()
 
 
 def read_class_list(path: str | Path | None) -> set[str] | None:
+    """Read a class list file (one class per line, "#" lines are comments).
+
+    Returns None when no file is given or the file does not exist, which means
+    "use all classes" (or let split.py choose them).
+    """
     if not path:
         return None
     path = Path(path)
     if not path.exists():
         return None
     names = [ln.strip() for ln in path.read_text(encoding="utf-8").splitlines()]
+    # Clean the names the same way as the folder names, so they can be compared.
     return {clean_label(n) for n in names if n and not n.startswith("#")}
 
 
 def list_record_files(record: int | str) -> list[dict]:
+    """Ask Zenodo which files the record has: name, size (bytes) and download URL."""
     with urllib.request.urlopen(ZENODO_API.format(record=record), timeout=60) as r:
         meta = json.load(r)
     files = []
     for f in meta.get("files", []):
+        # Different Zenodo API versions use different key names, so try both.
         url = f.get("links", {}).get("self") or f.get("links", {}).get("download")
         files.append({"name": f.get("key") or f.get("filename"), "size": f.get("size", 0), "url": url})
     return files
 
 
 def download_file(url: str, dest: Path) -> None:
+    """Download a (large) file in chunks and log progress every 10%."""
+    # Write to "<name>.part" first and rename at the end, so a broken download
+    # never looks like a finished file.
     tmp = dest.with_suffix(dest.suffix + ".part")
     log.info(f"Downloading {dest.name} ...")
     with urllib.request.urlopen(url, timeout=120) as r, open(tmp, "wb") as f:
         total = int(r.headers.get("Content-Length") or 0)
         done, next_report = 0, 0.0
         while True:
-            chunk = r.read(1 << 22)
+            chunk = r.read(1 << 22)  # read 4 MB at a time (does not load the whole file in memory)
             if not chunk:
                 break
             f.write(chunk)
@@ -82,14 +95,16 @@ def download_file(url: str, dest: Path) -> None:
 
 def extract_zip(zip_path: Path, out_dir: Path, keep: set[str] | None) -> int:
     """Extract video files; if ``keep`` is given only classes in it are extracted."""
-    n = 0
+    n = 0  # number of extracted files
     with zipfile.ZipFile(zip_path) as zf:
         for member in zf.infolist():
+            # Skip folders and the hidden "__MACOSX" files that macOS adds to zips.
             if member.is_dir() or "__MACOSX" in member.filename:
                 continue
             parts = Path(member.filename).parts
             if len(parts) < 2:
-                continue
+                continue  # a file not inside a class folder
+            # parts[-2] is the class folder, e.g. "12. Loud".
             if keep is not None and clean_label(parts[-2]) not in keep:
                 continue
             target = out_dir / member.filename
@@ -101,6 +116,7 @@ def extract_zip(zip_path: Path, out_dir: Path, keep: set[str] | None) -> int:
 
 
 def main():
+    # Command-line options (plus the shared --config / --set / --tiny).
     parser = add_common_args(argparse.ArgumentParser(description=__doc__,
                              formatter_class=argparse.RawDescriptionHelpFormatter),
                              "configs/data.yaml")
@@ -115,20 +131,25 @@ def main():
 
     files = list_record_files(record)
     if args.list:
+        # --list: only print the zip names and sizes, download nothing.
         for f in files:
             print(f"{f['name']:<45} {f['size'] / 1e9:7.2f} GB")
         return
 
+    # Which classes to keep (None = all classes).
     keep = read_class_list(args.classes or cfg["dataset"].get("class_list"))
     if keep:
         log.info(f"Extracting only {len(keep)} classes")
     raw_dir = paths["raw_dir"]
     raw_dir.mkdir(parents=True, exist_ok=True)
+    # ".downloaded.json" remembers which zips are already done, so if the
+    # session disconnects, running the command again continues where it stopped.
     done_marker = raw_dir / ".downloaded.json"
     finished = set(json.loads(done_marker.read_text())) if done_marker.exists() else set()
 
     selected = [f for f in files if any(fnmatch.fnmatch(f["name"], p) for p in args.include)]
     log.info(f"{len(selected)} file(s) selected, {len(finished)} already done")
+    # One zip at a time: download -> extract needed classes -> delete zip.
     for f in selected:
         if f["name"] in finished:
             continue
@@ -138,7 +159,7 @@ def main():
         n = extract_zip(zip_path, raw_dir, keep)
         log.info(f"Extracted {n} videos from {f['name']}")
         if not args.keep_zips:
-            zip_path.unlink()
+            zip_path.unlink()  # free disk space before the next zip
         finished.add(f["name"])
         done_marker.write_text(json.dumps(sorted(finished)))
     log.info(f"Done. Videos are in {raw_dir}")
