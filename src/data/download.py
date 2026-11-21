@@ -44,9 +44,17 @@ def clean_label(folder_name: str) -> str:
     return name.strip().lower()
 
 
+def class_key(name: str) -> str:
+    """Spelling-independent key used to match class names: 'Thank You', 'thank_you' and
+    'thankyou' all become 'thankyou'. The official INCLUDE-50 list writes words joined
+    ('goodmorning', 'biglarge'), while the dataset folders may use spaces or underscores."""
+    return re.sub(r"[^a-z0-9]", "", clean_label(name))
+
+
 def read_class_list(path: str | Path | None) -> set[str] | None:
     """Read a class list file (one class per line, "#" lines are comments).
 
+    Returns the set of ``class_key`` values (compare them with ``class_key(folder_name)``).
     Returns None when no file is given or the file does not exist, which means
     "use all classes" (or let split.py choose them).
     """
@@ -57,7 +65,7 @@ def read_class_list(path: str | Path | None) -> set[str] | None:
         return None
     names = [ln.strip() for ln in path.read_text(encoding="utf-8").splitlines()]
     # Clean the names the same way as the folder names, so they can be compared.
-    return {clean_label(n) for n in names if n and not n.startswith("#")}
+    return {class_key(n) for n in names if n and not n.startswith("#")}
 
 
 def list_record_files(record: int | str) -> list[dict]:
@@ -105,7 +113,7 @@ def extract_zip(zip_path: Path, out_dir: Path, keep: set[str] | None) -> int:
             if len(parts) < 2:
                 continue  # a file not inside a class folder
             # parts[-2] is the class folder, e.g. "12. Loud".
-            if keep is not None and clean_label(parts[-2]) not in keep:
+            if keep is not None and class_key(parts[-2]) not in keep:
                 continue
             target = out_dir / member.filename
             target.parent.mkdir(parents=True, exist_ok=True)
