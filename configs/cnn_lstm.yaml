@@ -1,0 +1,42 @@
+# Pipeline A (Member 2): pretrained CNN per frame -> (Bi)LSTM. Inherits the shared data settings.
+_base_: data.yaml
+
+experiment: cnn_lstm_mobilenet_v2   # results/<experiment>/ ; change it when you change the model (see ablations)
+input_type: frames
+
+model:
+  name: cnn_lstm
+  backbone: mobilenet_v2      # mobilenet_v2 | resnet18 | efficientnet_b0
+  pretrained: true            # ImageNet weights (downloaded once by torchvision)
+  hidden_size: 256
+  num_layers: 1
+  bidirectional: true
+  dropout: 0.3
+  pooling: mean               # last | mean | max   (how LSTM outputs are combined over time)
+  freeze_backbone: true       # start with the CNN frozen: only the LSTM + classifier learn
+  unfreeze_epoch: 3           # epoch at which the CNN is unfrozen and fine-tuned (null = never)
+
+augment:                      # clip-consistent: one random crop / rotation / colour change per clip
+  enabled: true
+  scale: [0.8, 1.0]
+  rotation: 10
+  brightness: 0.2
+  contrast: 0.2
+  saturation: 0.2
+  hflip: false                # flipping swaps the dominant hand, so it stays off by default
+
+train:
+  epochs: 30
+  batch_size: 8
+  lr: 1.0e-3                  # new layers (LSTM + classifier)
+  backbone_lr: 1.0e-4         # pretrained CNN, once unfrozen
+  weight_decay: 1.0e-4
+  warmup_epochs: 2
+  label_smoothing: 0.1
+  grad_clip: 1.0
+  grad_accum_steps: 1         # raise (and lower batch_size) if the GPU runs out of memory
+  amp: true                   # mixed precision, GPU only
+  early_stopping_patience: 8
+  num_workers: 2
+  resume: true                # re-running the same command continues from last.pt
+  tensorboard: false
