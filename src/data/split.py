@@ -60,6 +60,20 @@ def scan_videos(raw_dir: Path) -> pd.DataFrame:
         })
     if not rows:
         raise FileNotFoundError(f"No videos found under {raw_dir}. Run src.data.download first.")
+    # Two files can get the same ID (e.g. "a.MOV" and "a.mp4" in one folder, because the
+    # extension is dropped). They would share one cache file, so one video would be missing.
+    # The first keeps its plain ID (existing caches stay valid); later ones get a suffix.
+    used: set[str] = set()
+    for row in rows:
+        vid = row["video_id"]
+        if vid in used:
+            ext = Path(row["video_path"]).suffix.lower().lstrip(".")
+            vid, n = f"{vid}_{ext}", 2
+            while vid in used:
+                vid, n = f"{row['video_id']}_{ext}{n}", n + 1
+            row["video_id"] = vid
+            log.warning(f"Duplicate video ID, renamed to {vid} ({row['video_path']})")
+        used.add(row["video_id"])
     return pd.DataFrame(rows)
 
 
