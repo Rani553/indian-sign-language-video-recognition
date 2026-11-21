@@ -25,6 +25,8 @@ import fnmatch
 import json
 import re
 import shutil
+import time
+import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -80,7 +82,25 @@ def list_record_files(record: int | str) -> list[dict]:
     return files
 
 
-def download_file(url: str, dest: Path) -> None:
+def download_file(url: str, dest: Path, retries: int = 5) -> None:
+    """Download with retries: Zenodo sometimes answers with a temporary server error (HTTP 500/503)
+    or drops the connection, and one such error must not end a multi-hour download.
+    Waits 5, 10, 20, 40 ... seconds (at most 60) between attempts."""
+    for attempt in range(1, retries + 1):
+        try:
+            _download_once(url, dest)
+            return
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+            # 4xx errors (except 429 "too many requests") will not go away by retrying.
+            permanent = isinstance(e, urllib.error.HTTPError) and e.code < 500 and e.code != 429
+            if permanent or attempt == retries:
+                raise
+            wait = min(60, 5 * 2 ** (attempt - 1))
+            log.warning(f"{dest.name}: {e} - retry {attempt}/{retries - 1} in {wait}s")
+            time.sleep(wait)
+
+
+def _download_once(url: str, dest: Path) -> None:
     """Download a (large) file in chunks and log progress every 10%."""
     # Write to "<name>.part" first and rename at the end, so a broken download
     # never looks like a finished file.
