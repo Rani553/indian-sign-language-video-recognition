@@ -1,7 +1,5 @@
 # Pipeline A: raw RGB frames (CNN + LSTM)
 
-*Draft. Baseline numbers are final for the run described; ablation numbers (Section 5) are to be filled in from `results/*/history.csv` and `test_metrics.json` once the ablation runs finish.*
-
 ## 1. Approach
 
 Each clip is turned into a fixed number of RGB frames. A pretrained CNN converts every frame into a feature vector, a (bidirectional) LSTM reads the vectors in time order, and the pooled LSTM output is classified into one of the 50 signs. This is the LRCN design of Donahue et al. (2015).
@@ -28,9 +26,9 @@ Each clip is turned into a fixed number of RGB frames. A pretrained CNN converts
 
 * **Augmentation (clip-consistent, one random draw per clip):** random crop (side 0.8 to 1.0 of the frame) with rotation up to 10 degrees, brightness / contrast / saturation change of up to 20 %. No horizontal flip, because flipping swaps the dominant hand.
 * **Freeze, then fine-tune:** the CNN is frozen for the first 3 epochs (only the LSTM and classifier learn), then unfrozen. Learning rate 1e-3 for the new layers; 1e-4 for the CNN after unfreezing.
-* **Optimisation:** AdamW (weight decay 1e-4), 2 warm-up epochs then cosine decay, label smoothing 0.1, gradient clipping 1.0, batch size 8, mixed precision, 30 epochs, early stopping with patience 8 (it did not trigger), seed 42.
-* **Hardware and time:** one NVIDIA T4 (Kaggle), about 35 s per epoch, about 18 min for the full run.
-* The checkpoint with the best validation accuracy is kept (epoch 25).
+* **Optimisation:** AdamW (weight decay 1e-4), 2 warm-up epochs then cosine decay, label smoothing 0.1, gradient clipping 1.0, batch size 8, mixed precision, at most 30 epochs, early stopping with patience 8, seed 42.
+* **Hardware and time:** one NVIDIA T4 (Kaggle), about 35 s per epoch, about 18 min for the baseline run.
+* The checkpoint with the best validation accuracy is kept; the test set is used once per run, after training.
 
 ## 4. Results (baseline: MobileNetV2, 16 frames, freeze 3 epochs then fine-tune, mean pooling)
 
@@ -45,26 +43,45 @@ With 137 test videos one video is 0.73 percentage points, and a normal-approxima
 
 ## 5. Ablations
 
-One factor is changed at a time from the baseline. Fill in from the finished runs.
+One factor is changed at a time from the baseline; everything else is identical (same split, seed and schedule). Each configuration was run once. The raw table is in `pipeline_a_ablation.csv`.
 
-| Experiment | Change | Params (M) | Best val acc | Test acc | s / epoch |
-|---|---|---|---|---|---|
-| `cnn_lstm_mobilenet_v2` | baseline | 5.40 | 0.949 | 0.927 | ~35 |
-| `cnn_lstm_resnet18` | backbone ResNet18 | 12.78 | | | |
-| `cnn_lstm_efficientnet_b0` | backbone EfficientNet-B0 | | | | |
-| `cnn_lstm_mobilenet_v2_8f` | 8 frames instead of 16 | 5.40 | | | |
-| `cnn_lstm_mobilenet_v2_frozen` | CNN frozen the whole run | 5.40 | | | |
-| `cnn_lstm_mobilenet_v2_finetune` | CNN trained from epoch 0 | 5.40 | | | |
-| `cnn_lstm_mobilenet_v2_pool_last` | last-step pooling | 5.40 | | | |
-| `cnn_lstm_mobilenet_v2_pool_max` | max pooling | 5.40 | | | |
+| Experiment | Change | Params (M) | Best val acc | Test acc | Test top-5 | Epochs run | s / epoch |
+|---|---|---|---|---|---|---|---|
+| `cnn_lstm_mobilenet_v2` | baseline (MobileNetV2, 16 frames, freeze 3 ep, mean pool) | 5.40 | 0.949 | 0.927 | 1.000 | 30 | 35 |
+| `cnn_lstm_resnet18` | backbone ResNet18 | 12.78 | 0.883 | 0.861 | 0.993 | 30 | 39 |
+| `cnn_lstm_efficientnet_b0` | backbone EfficientNet-B0 | 7.18 | 0.964 | 0.934 | 1.000 | 28 | 42 |
+| `cnn_lstm_mobilenet_v2_8f` | 8 frames instead of 16 | 5.40 | 0.905 | 0.912 | 1.000 | 30 | 18 |
+| `cnn_lstm_mobilenet_v2_frozen` | CNN frozen the whole run | 5.40 | 0.467 | 0.453 | 0.927 | 30 | 36 |
+| `cnn_lstm_mobilenet_v2_finetune` | CNN trained from epoch 0 | 5.40 | 0.942 | 0.920 | 0.993 | 28 | 37 |
+| `cnn_lstm_mobilenet_v2_pool_last` | last-step pooling | 5.40 | 0.759 | 0.745 | 0.993 | 30 | 38 |
+| `cnn_lstm_mobilenet_v2_pool_max` | max pooling | 5.40 | 0.942 | 0.934 | 0.993 | 30 | 39 |
 
-*Discussion to write after the runs: which factor mattered, accuracy against model size and speed, and how this compares with the pose-keypoint pipeline (Member 3).*
+Test accuracy in videos (of 137): baseline 127, EfficientNet-B0 128, max pooling 128, fine-tune from start 126, 8 frames 125, ResNet18 118, last-step pooling 102, frozen CNN 62.
+
+### Discussion
+
+**Differences that are clearly larger than the noise**
+
+* **A frozen CNN does not work.** Keeping the ImageNet features fixed gives 0.453 test accuracy against 0.927 for the baseline (about 47 points). ImageNet features alone do not separate these signs; the CNN has to adapt to the data.
+* **Last-step pooling is much worse than mean or max pooling** (0.745 against 0.927 and 0.934). Its validation accuracy was still rising slowly at epoch 30, so part of the gap may be slower convergence rather than a hard limit.
+
+**Differences that are small or not conclusive**
+
+* **Backbone.** EfficientNet-B0 (0.934) and MobileNetV2 (0.927) differ by one test video, which is well inside the +/- 4.4 point noise, so we do not claim one is better. ResNet18 is lower (0.861, 118 videos), but its validation accuracy was still increasing at epoch 30, so it was probably not converged; a longer run was not done. EfficientNet-B0 had the highest validation accuracy (0.964) and was stopped early at epoch 28; its training accuracy reaches 0.99, so it overfits more than MobileNetV2.
+* **Pooling.** Max (0.934) and mean (0.927) pooling differ by one video: no evidence of a difference.
+* **Freeze schedule.** Fine-tuning from the first epoch (0.920) and freezing the CNN for 3 epochs first (0.927) differ by one video. Freezing for the first epochs gave no measurable benefit on this dataset; fine-tuning itself is what matters.
+* **Number of frames.** 8 frames cost about 1.5 points of test accuracy (0.912 against 0.927, two videos) and 4.4 points of validation accuracy, and halve the time per epoch (18 s against 35 s). Within the noise of a single run this suggests that 8 frames are nearly as accurate at about half the cost, which would be worth confirming with more seeds.
+
+**Accuracy against size and speed.** Parameter counts range from 5.40 M (MobileNetV2) to 12.78 M (ResNet18) without a matching accuracy gain, so the lightest model is the sensible default. The time per epoch was almost the same for all backbones (35 to 42 s) and for the frozen run, but half as long with 8 frames. This suggests that training time here is limited by loading and augmenting frames on the CPU rather than by the GPU; we did not profile this. Inference speed on CPU and GPU is measured separately in the comparison with the pose-keypoint pipeline.
+
+**Model for the comparison with Pipeline B.** The best checkpoint by validation accuracy is EfficientNet-B0 (val 0.964, test 0.934); the MobileNetV2 baseline is within one test video of it with fewer parameters. Both checkpoints are provided.
 
 ## 6. Limitations
 
-* One seed per configuration and a small test set (137 videos): small differences are not reliable.
+* One seed per configuration and a small test set (137 videos): differences of one to three videos are not reliable.
 * Our split differs from the official INCLUDE-50 split, and the data comes from a Kaggle copy with about 8 missing videos.
 * The checkpoint is selected on the validation set, so the validation accuracy is slightly optimistic; the test accuracy is the number to report.
+* ResNet18 and last-step pooling were still improving when training stopped at 30 epochs, so their results understate what longer training could reach.
 * All signers are from the same recording setting (Chennai), so the model has not been tested on other signers or regions.
 
 ## References
