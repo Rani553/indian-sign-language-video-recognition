@@ -22,13 +22,16 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import io
 import json
 import re
 import shutil
+import threading
 import time
 import urllib.error
 import urllib.request
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from src.utils.config import add_common_args, config_from_args, resolve_paths
@@ -82,22 +85,26 @@ def list_record_files(record: int | str) -> list[dict]:
     return files
 
 
-def download_file(url: str, dest: Path, retries: int = 5) -> None:
-    """Download with retries: Zenodo sometimes answers with a temporary server error (HTTP 500/503)
-    or drops the connection, and one such error must not end a multi-hour download.
-    Waits 5, 10, 20, 40 ... seconds (at most 60) between attempts."""
+def with_retries(action, label: str, retries: int = 5):
+    """Run ``action()``; retry on temporary network errors. Zenodo sometimes answers with a
+    temporary server error (HTTP 500/503) or drops the connection, and one such error must
+    not end a multi-hour download. Waits 5, 10, 20, 40 ... seconds (at most 60) between attempts."""
     for attempt in range(1, retries + 1):
         try:
-            _download_once(url, dest)
-            return
+            return action()
         except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
             # 4xx errors (except 429 "too many requests") will not go away by retrying.
             permanent = isinstance(e, urllib.error.HTTPError) and e.code < 500 and e.code != 429
             if permanent or attempt == retries:
                 raise
             wait = min(60, 5 * 2 ** (attempt - 1))
-            log.warning(f"{dest.name}: {e} - retry {attempt}/{retries - 1} in {wait}s")
+            log.warning(f"{label}: {e} - retry {attempt}/{retries - 1} in {wait}s")
             time.sleep(wait)
+
+
+def download_file(url: str, dest: Path, retries: int = 5) -> None:
+    """Download a whole file, with retries (see ``with_retries``)."""
+    with_retries(lambda: _download_once(url, dest), dest.name, retries)
 
 
 def _download_once(url: str, dest: Path) -> None:
@@ -143,6 +150,81 @@ def extract_zip(zip_path: Path, out_dir: Path, keep: set[str] | None) -> int:
     return n
 
 
+class RangeFile(io.RawIOBase):
+    """Read-only, seekable view of a remote file using HTTP Range requests.
+
+    ``zipfile.ZipFile`` can open it, so the file list of a zip (stored at its end) and single
+    members can be read without downloading the whole zip. Data is fetched in blocks
+    (``BLOCK`` bytes) because zipfile reads in tiny pieces.
+    """
+    BLOCK = 4 << 20
+
+    def __init__(self, url: str, size: int):
+        self.url, self.size, self.pos = url, size, 0
+        self._buf, self._buf_start = b"", 0
+
+    def seekable(self) -> bool:
+        return True
+
+    def readable(self) -> bool:
+        return True
+
+    def tell(self) -> int:
+        return self.pos
+
+    def seek(self, offset: int, whence: int = 0) -> int:
+        base = {0: 0, 1: self.pos, 2: self.size}[whence]
+        self.pos = base + offset
+        return self.pos
+
+    def _fetch(self, start: int, n: int) -> None:
+        end = min(self.size - 1, start + max(n, self.BLOCK) - 1)
+
+        def get() -> bytes:
+            req = urllib.request.Request(self.url, headers={"Range": f"bytes={start}-{end}"})
+            with urllib.request.urlopen(req, timeout=120) as r:
+                return r.read()
+
+        self._buf, self._buf_start = with_retries(get, f"range {start}-{end}"), start
+
+    def read(self, n: int = -1) -> bytes:
+        n = self.size - self.pos if n is None or n < 0 else min(n, self.size - self.pos)
+        out = []
+        while n > 0:
+            off = self.pos - self._buf_start
+            if not 0 <= off < len(self._buf):  # wanted bytes are not in the cached block
+                self._fetch(self.pos, n)
+                off = 0
+            chunk = self._buf[off:off + n]
+            out.append(chunk)
+            self.pos += len(chunk)
+            n -= len(chunk)
+        return b"".join(out)
+
+
+def extract_remote(url: str, size: int, out_dir: Path, keep: set[str] | None) -> int:
+    """Like ``extract_zip`` but for a zip that stays on the server: only the needed videos are
+    downloaded. Videos that already exist with the right size are skipped (resume)."""
+    n = 0
+    with zipfile.ZipFile(RangeFile(url, size)) as zf:
+        for member in zf.infolist():
+            if member.is_dir() or "__MACOSX" in member.filename:
+                continue
+            parts = Path(member.filename).parts
+            if len(parts) < 2 or (keep is not None and class_key(parts[-2]) not in keep):
+                continue
+            target = out_dir / member.filename
+            n += 1
+            if target.exists() and target.stat().st_size == member.file_size:
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            tmp = target.with_name(target.name + ".part")  # never leave a half-written video
+            with zf.open(member) as src, open(tmp, "wb") as dst:
+                shutil.copyfileobj(src, dst, 1 << 20)
+            tmp.replace(target)
+    return n
+
+
 def main():
     # Command-line options (plus the shared --config / --set / --tiny).
     parser = add_common_args(argparse.ArgumentParser(description=__doc__,
@@ -152,6 +234,11 @@ def main():
     parser.add_argument("--include", nargs="*", default=["*.zip"], help="Zip name patterns")
     parser.add_argument("--classes", default=None, help="Class list file (default: dataset.class_list)")
     parser.add_argument("--keep-zips", action="store_true", help="Do not delete zips after extraction")
+    parser.add_argument("--remote", action="store_true",
+                        help="Do not download whole zips: read each zip's file list from the server and "
+                             "download only the videos of the wanted classes (needs a class list)")
+    parser.add_argument("--workers", type=int, default=1,
+                        help="With --remote: number of zips processed at the same time")
     args = parser.parse_args()
     cfg = config_from_args(args)
     paths = resolve_paths(cfg)
@@ -177,6 +264,28 @@ def main():
 
     selected = [f for f in files if any(fnmatch.fnmatch(f["name"], p) for p in args.include)]
     log.info(f"{len(selected)} file(s) selected, {len(finished)} already done")
+
+    if args.remote:
+        # Only the wanted videos are fetched, several zips in parallel (a server often limits the
+        # speed of one connection, not of several). Zips already marked done are skipped.
+        if not keep:
+            parser.error("--remote needs a class list (configs/include50_classes.txt)")
+        lock = threading.Lock()
+
+        def process(f: dict) -> None:
+            n = extract_remote(f["url"], f["size"], raw_dir, keep)
+            with lock:
+                finished.add(f["name"])
+                done_marker.write_text(json.dumps(sorted(finished)))
+            log.info(f"Extracted {n} videos from {f['name']} ({len(finished)}/{len(files)} zips done)")
+
+        todo = [f for f in selected if f["name"] not in finished]
+        with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
+            for fut in [pool.submit(process, f) for f in todo]:
+                fut.result()  # re-raise the first error here
+        log.info(f"Done. Videos are in {raw_dir}")
+        return
+
     # One zip at a time: download -> extract needed classes -> delete zip.
     for f in selected:
         if f["name"] in finished:
