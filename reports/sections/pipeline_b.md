@@ -103,6 +103,7 @@ What the table does show, and what is worth stating:
 * The keypoints used for training were extracted without resetting MediaPipe between videos (small, order-dependent differences in hand coordinates, see Section 2); the models were not retrained after the fix.
 * Face landmarks were not used. All signers are from the same recording setting, so generalisation to other signers or regions is untested.
 * The split is our own, not the official INCLUDE-50 split, so the results cannot be compared with published numbers.
+* **Possible overlap between training and test sessions (suspected, not proven).** We assume that consecutive file numbers of one class are takes from the same recording session; the dataset has no signer id to confirm this. With this assumption, 109 of the 137 test videos have a training video of the same class within one file number, and 127 within two. A random split like ours may therefore be easier than recognising a new session or a new signer, and the accuracies above may be higher than they would be for new signers. A split by recording session would be needed to measure the size of this effect, and all models would have to be retrained for it.
 * The checkpoint is selected on the validation set, so the validation accuracy is slightly optimistic; the test accuracy is the number to report. The test set was used only for the two baseline checkpoints.
 * No hyper-parameter tuning and no repeated runs; the Pose-LSTM versus Pose-Transformer difference should be confirmed with several seeds.
 
