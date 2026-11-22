@@ -36,8 +36,7 @@ the last column is the mean of 8 runs on one real video.
   train and test, so accuracies are likely higher than for new signers; keypoints come from cached 224 x 224 frames
   (hands are found in only about 55 to 67 % of the frames); timings vary by 20 to 40 % between sessions.
 
-Details: [`reports/report_template.md`](reports/report_template.md) (full report) and
-[`reports/sections/`](reports/sections) (one section per pipeline).
+Full report: [`reports/Team-29_Report.pdf`](reports/Team-29_Report.pdf).
 
 ---
 
@@ -106,7 +105,7 @@ app/demo.py         Streamlit demo
 notebooks/colab/    one ready-to-run notebook per team member + quickstart
 scripts/            setup (Colab / Kaggle), dummy data, ablation runners
 tests/              pytest suite (runs on CPU with synthetic data; used by CI)
-reports/            report template and per-pipeline sections
+reports/            final report (PDF) and the ablation tables
 ```
 
 ## Outputs
