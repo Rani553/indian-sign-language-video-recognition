@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.data.download import clean_label, read_class_list
+from src.data.download import class_key, clean_label, read_class_list
 from src.utils.config import PROJECT_ROOT, add_common_args, config_from_args, resolve_paths
 from src.utils.logger import get_logger
 from src.utils.video import VIDEO_EXTENSIONS
@@ -60,6 +60,20 @@ def scan_videos(raw_dir: Path) -> pd.DataFrame:
         })
     if not rows:
         raise FileNotFoundError(f"No videos found under {raw_dir}. Run src.data.download first.")
+    # Two files can get the same ID (e.g. "a.MOV" and "a.mp4" in one folder, because the
+    # extension is dropped). They would share one cache file, so one video would be missing.
+    # The first keeps its plain ID (existing caches stay valid); later ones get a suffix.
+    used: set[str] = set()
+    for row in rows:
+        vid = row["video_id"]
+        if vid in used:
+            ext = Path(row["video_path"]).suffix.lower().lstrip(".")
+            vid, n = f"{vid}_{ext}", 2
+            while vid in used:
+                vid, n = f"{row['video_id']}_{ext}{n}", n + 1
+            row["video_id"] = vid
+            log.warning(f"Duplicate video ID, renamed to {vid} ({row['video_path']})")
+        used.add(row["video_id"])
     return pd.DataFrame(rows)
 
 
@@ -80,10 +94,13 @@ def choose_classes(meta: pd.DataFrame, ds_cfg: dict) -> list[str]:
 
     if wanted:
         # Case 1: a class list was given. Warn about classes we could not find.
-        missing = sorted(wanted - set(eligible.index))
+        # ``wanted`` holds class_key values, so 'thankyou' in the list matches a 'thank you' folder.
+        # The returned names are the real folder-based labels.
+        found = {name: class_key(name) for name in eligible.index}
+        missing = sorted(wanted - set(found.values()))
         if missing:
             log.warning(f"{len(missing)} classes from the list are missing/too small: {missing[:10]}")
-        return sorted(wanted & set(eligible.index))
+        return sorted(name for name, key in found.items() if key in wanted)
 
     # Case 2: no class list.
     n = ds_cfg.get("num_classes")
