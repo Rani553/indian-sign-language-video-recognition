@@ -1,0 +1,18 @@
+# Pipeline B (Member 3): MediaPipe keypoints -> Transformer encoder with a CLS token.
+# Inherits pose_lstm.yaml (keypoints, augmentation, training settings) and changes the model.
+_base_: pose_lstm.yaml
+
+experiment: pose_transformer
+
+model:
+  name: pose_transformer
+  d_model: 128
+  nhead: 4
+  num_layers: 3
+  dim_feedforward: 256
+  dropout: 0.2
+  max_len: 64                 # longest clip it accepts (keypoints.num_frames must be <= this)
+
+train:
+  lr: 5.0e-4                  # Transformers prefer a smaller learning rate than the LSTM
+  warmup_epochs: 5
