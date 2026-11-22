@@ -14,9 +14,36 @@ Recognise isolated ISL signs (one word per clip) from short videos, to support a
 
 Dataset: **INCLUDE / INCLUDE-50** (Sridhar et al., 2020). See [`data/README.md`](data/README.md).
 
+## Results (test set, 137 videos)
+
+Same split and test set for every model, one run per model. Speed was measured on one laptop (RTX 2050);
+the last column is the mean of 8 runs on one real video.
+
+| Model | Params | GFLOPs / clip | Test top-1 | CPU, 1 thread (model only) | Raw video to prediction (CPU) |
+|---|---|---|---|---|---|
+| Pose-Transformer (B) | 0.48 M | 0.032 | 0.934 (128/137) | 1.0 ms | 1858 ms |
+| Pose-LSTM (B) | 0.76 M | 0.047 | 0.883 (121/137) | 1.5 ms | 1867 ms |
+| CNN-LSTM MobileNetV2 (A) | 5.40 M | 9.69 | 0.927 (127/137) | 288 ms | 746 ms |
+| CNN-LSTM EfficientNet-B0 (A) | 7.18 M | 12.41 | 0.978 (134/137) | 397 ms | 704 ms |
+
+* **Accuracy:** raw frames and keypoints are not distinguishable on 137 test videos (MobileNetV2 0.927 and
+  Pose-Transformer 0.934 differ by one video). EfficientNet-B0 is a single run: an earlier run of the same
+  configuration reached 0.934, so a few videos of difference between runs are normal.
+* **Size:** the pose models have 0.5 to 0.8 M parameters against 5.4 to 7.2 M, and need 200 to 400 times fewer FLOPs.
+* **Speed:** as models the pose networks take 1 to 1.5 ms against 288 to 397 ms, but from a raw video the frames
+  pipeline is about 2.5 times faster, because MediaPipe alone takes about 1.3 s per video.
+* **Caveats:** one seed per model; the random split probably puts near-duplicate takes of one session in both
+  train and test, so accuracies are likely higher than for new signers; keypoints come from cached 224 x 224 frames
+  (hands are found in only about 55 to 67 % of the frames); timings vary by 20 to 40 % between sessions.
+
+Details: [`reports/report_template.md`](reports/report_template.md) (full report) and
+[`reports/sections/`](reports/sections) (one section per pipeline).
+
 ---
 
 ## Quick start (3 minutes, CPU, synthetic data)
+
+Python 3.12 is recommended. MediaPipe 0.10.21, which is only needed to extract keypoints, does not install on Python 3.13.
 
 ```bash
 git clone https://github.com/Rani553/indian-sign-language-video-recognition.git && cd indian-sign-language-video-recognition
@@ -77,7 +104,7 @@ src/evaluation/     metrics, evaluation, speed benchmark, comparison
 src/inference/      Predictor: raw video -> top-k signs (used by demo and benchmark)
 app/demo.py         Streamlit demo
 notebooks/colab/    one ready-to-run notebook per team member + quickstart
-scripts/            setup, dummy data, ablations, git bootstrap, file ownership
+scripts/            setup (Colab / Kaggle), dummy data, ablation runners
 tests/              pytest suite (runs on CPU with synthetic data; used by CI)
 reports/            report template and per-pipeline sections
 ```
@@ -92,8 +119,15 @@ reports/            report template and per-pipeline sections
 ```
 
 ## Team
-Four members, one module each. Each member's tasks are tracked as a GitHub issue and developed on
+Four members, one module each. Each member's tasks were tracked as a GitHub issue and developed on
 its own `feature/*` branch, merged into `develop` through pull requests.
+
+| Member | Part |
+|---|---|
+| M1 Rani Kumari | Data pipeline, configs, split, trainer |
+| M2 Nirmal Mewada | Pipeline A: CNN + LSTM |
+| M3 Pragati Chauhan | Pipeline B: keypoints, Pose-LSTM, Pose-Transformer |
+| M4 Rohit Malviya | Evaluation, speed benchmark, comparison, demo, tests and CI, report |
 
 ## References
 1. A. Sridhar, R. G. Ganesan, P. Kumar, M. Khapra. *INCLUDE: A Large Scale Dataset for Indian Sign
