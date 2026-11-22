@@ -133,6 +133,8 @@ def plot_accuracy_vs_latency(df: pd.DataFrame, path: Path) -> None:
             ax.annotate(r["experiment"], (r[col], r["top1"]), textcoords="offset points", xytext=(8, 7),
                         fontsize=8.5, color=INK)
         ax.set_xscale("log")
+        # Room around the points (at least a factor 4 end to end), so a log axis always has readable ticks.
+        ax.set_xlim(d[col].min() / 2, d[col].max() * 2)
         # Plain numbers (3, 5, 10, 20 ...) instead of matplotlib's default 10^x labels.
         ax.xaxis.set_major_locator(ticker.LogLocator(base=10, subs=(1, 2, 3, 5), numticks=20))
         ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: f"{v:g}"))
