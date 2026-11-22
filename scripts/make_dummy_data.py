@@ -74,13 +74,17 @@ def make_dummy_data(data_root: Path, num_classes: int = 6, videos_per_class: int
 
 def make_fake_keypoints(data_root: Path, frames: int = 24, seed: int = 0) -> Path:
     """Write synthetic MediaPipe-style keypoints for every video of an existing dummy dataset."""
+    # Imported here, not at the top: plain frame dummy data should not need the keypoint modules.
     from src.features.keypoint_io import fake_keypoints, save_keypoints
 
     processed = data_root / "processed"
+    # The class index of each video comes from the same label map the frames data uses, so a fake
+    # keypoint file always belongs to the right class (the signal a model can learn is class-specific).
     label_map = json.loads((processed / "splits" / "label_map.json").read_text())
     kp_dir = processed / "keypoints"
     kp_dir.mkdir(parents=True, exist_ok=True)
-    rng = np.random.default_rng(seed)
+    rng = np.random.default_rng(seed)    # fixed seed: the same fake data every time, so tests are repeatable
+    # One file per video in metadata.csv (all splits), named by video_id like the real keypoint cache.
     for r in pd.read_csv(processed / "splits" / "metadata.csv").itertuples(index=False):
         save_keypoints(kp_dir / f"{r.video_id}.npz",
                        fake_keypoints(label_map[r.label], len(label_map), frames, rng))
