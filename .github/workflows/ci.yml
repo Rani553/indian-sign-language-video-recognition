@@ -1,0 +1,39 @@
+name: CI
+
+# Run the test suite on every push to develop / main and on every pull request.
+# The tests use synthetic data only (no INCLUDE videos, no GPU, no checkpoints).
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      # The CPU build of PyTorch is much smaller than the default CUDA build.
+      # requirements.txt only says torch>=2.1, so it keeps this one.
+      - name: Install CPU PyTorch
+        run: pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install requirements
+        run: pip install -r requirements.txt
+
+      # MediaPipe (requirements-pose.txt) is NOT installed: it pins numpy<2 and is only needed to
+      # extract keypoints from raw videos. tests/test_keypoint_extractor.py skips itself without it.
+      - name: Run tests
+        run: pytest
