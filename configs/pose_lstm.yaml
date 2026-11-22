@@ -1,0 +1,43 @@
+# Pipeline B (Member 3): MediaPipe keypoints -> (Bi)LSTM with attention pooling. Inherits the shared data settings.
+_base_: data.yaml
+
+experiment: pose_lstm   # results/<experiment>/ ; change it when you change the model (see ablations)
+input_type: keypoints
+
+model:
+  name: pose_lstm
+  hidden_size: 128
+  num_layers: 2
+  bidirectional: true
+  dropout: 0.3
+  pooling: attention          # attention | mean | max | last
+
+keypoints:                    # only what differs from data.yaml; the rest (parts, hand_relative, ...) is inherited
+  num_frames: 32              # ablation: 16
+  use_velocity: true          # ablation: false
+  # parts: [pose, left_hand, right_hand]   # ablations: [left_hand, right_hand] (hands only), [pose] (body only)
+
+augment:                      # keypoint augmentation, one random draw per clip (see src/features/keypoint_features.py)
+  enabled: true               # ablation: false
+  scale: 0.10
+  rotate_deg: 8
+  shift: 0.10
+  noise: 0.01
+  hand_dropout: 0.20          # chance per hand to lose a short span, like MediaPipe misses
+  time_jitter: 0.5
+  mirror: 0.0                 # ablation: 0.5 (mirrors left <-> right and swaps the hands)
+
+train:
+  epochs: 100                 # the model is tiny: an epoch takes seconds
+  batch_size: 32
+  lr: 1.0e-3
+  weight_decay: 1.0e-2
+  warmup_epochs: 3
+  label_smoothing: 0.1
+  grad_clip: 1.0
+  grad_accum_steps: 1
+  amp: true                   # mixed precision, GPU only
+  early_stopping_patience: 20
+  num_workers: 2
+  resume: true                # re-running the same command continues from last.pt
+  tensorboard: false

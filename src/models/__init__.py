@@ -26,5 +26,17 @@ def build_model(cfg: dict, num_classes: int, input_dim: int | None = None) -> nn
     if name == "cnn_lstm":
         from src.models.cnn_lstm import CNNLSTM
         return CNNLSTM(num_classes=num_classes, **m)
-    # Member 3 adds "pose_lstm" and "pose_transformer" here.
+    # The two pose configs inherit from each other (pose_transformer.yaml -> pose_lstm.yaml), so
+    # the merged ``model`` section can contain the other model's own keys. Drop exactly those
+    # (a typo in any other key still raises a TypeError).
+    if name == "pose_lstm":
+        from src.models.pose_lstm import PoseLSTM
+        for k in ("d_model", "nhead", "dim_feedforward", "max_len"):
+            m.pop(k, None)
+        return PoseLSTM(num_classes=num_classes, input_dim=input_dim, **m)
+    if name == "pose_transformer":
+        from src.models.pose_transformer import PoseTransformer
+        for k in ("hidden_size", "bidirectional", "pooling"):
+            m.pop(k, None)
+        return PoseTransformer(num_classes=num_classes, input_dim=input_dim, **m)
     raise ValueError(f"Unknown model name: {name}")
