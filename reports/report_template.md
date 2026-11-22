@@ -57,7 +57,11 @@ Key ablation findings: none distinguishable from the baseline.]
   PyTorch's counter skips them); latency of the model alone (batch 1, 10 warm-up runs, 50 timed runs) on CPU with one
   thread (stable) and on GPU; throughput with batches of 16; and **end-to-end time from a raw video file**, split into
   decode and resize, features (CNN input, or MediaPipe plus feature engineering) and model.
-* **Hardware:** [TBD: CPU model, GPU model, PyTorch version, from the `hardware` field of `benchmark_*.json`].
+* **Hardware:** one laptop for every model: Intel 12th-gen Core CPU (Family 6 Model 154, 12 threads), NVIDIA GeForce RTX 2050
+  (CUDA 12.4), Windows 11, on mains power, Windows "Balanced" power plan, nothing else running. Model-only numbers:
+  Python 3.13, PyTorch 2.6.0+cu124. End-to-end numbers: a separate Python 3.12.5 environment with PyTorch 2.15.0 (CPU) and
+  MediaPipe 0.10.21, because MediaPipe does not install on Python 3.13; all three models were timed there, so the
+  end-to-end comparison is like for like. Each end-to-end number is the mean of 8 runs on one video (`MVI_4992.MOV`) after one warm-up.
 * The predictor uses exactly the preprocessing of training; a test checks that its input equals the dataset's input
   for the same cached frames (`tests/test_pipeline.py`).
 
@@ -79,15 +83,35 @@ Already reproduced by the evaluation code (test set, 137 videos):
 ![accuracy against speed](../results/comparison/accuracy_vs_latency.png)
 ![accuracy](../results/comparison/accuracy_bars.png)
 
-Measured on the development laptop (model only, one clip, one thread, not yet the final machine): Pose-Transformer
-0.032 GFLOPs and about 3 ms; Pose-LSTM 0.047 GFLOPs and about 6 ms; CNN-LSTM (MobileNetV2) 9.7 GFLOPs and
-a few hundred ms. **[TBD: replace with the numbers from the final machine.]**
+Speed, model only, one clip, median of 100 runs after 20 warm-up runs (same laptop for all models):
+
+| Model | GFLOPs | Checkpoint | CPU, 1 thread | CPU, 12 threads | GPU (RTX 2050) | Throughput GPU, batch 16 |
+|---|---|---|---|---|---|---|
+| Pose-Transformer | 0.032 | 1.9 MB | 0.85 ms | 2.0 ms | 1.1 ms | 13,320 clips/s |
+| Pose-LSTM | 0.047 | 3.0 MB | 1.4 ms | 7.9 ms | 1.0 ms | 12,261 clips/s |
+| CNN-LSTM (MobileNetV2) | 9.69 | 21.8 MB | 333 ms | 243 ms | 32 ms | 29 clips/s |
+
+The pose models need about 200 to 300 times fewer FLOPs than the MobileNetV2 CNN-LSTM. The tiny pose models run slower
+with 12 CPU threads than with one (thread start-up costs more than the work), so the one-thread number is the one to
+compare models with. Three repeated runs of the Pose-Transformer gave 2.3, 2.0 and 2.0 ms with 12 threads.
+**[TBD: CNN-LSTM (EfficientNet-B0) row, once its checkpoint is available.]**
 
 ### 6.2 Where the time goes (end to end)
 
-[TBD: table of decode / features / model per model for a real INCLUDE video. The pose report states that MediaPipe
-takes 2 to 5 s per video on a laptop, about a thousand times the model; check whether the frames pipeline is faster
-end to end even though its model is far larger.]
+A user of the demo pays for the whole chain from a raw video file, not for the model alone. One real INCLUDE video
+(`MVI_4992.MOV`, class "summer"), CPU, mean of 8 runs, same environment for all models:
+
+| Model | Decode and resize | Features | Model | **Total** |
+|---|---|---|---|---|
+| CNN-LSTM (MobileNetV2) | 532 ms | 8 ms | 155 ms | **695 ms** |
+| Pose-Transformer | 500 ms | 1292 ms (MediaPipe) | 2 ms | **1795 ms** |
+| Pose-LSTM | 501 ms | 1272 ms (MediaPipe) | 3 ms | **1776 ms** |
+
+Although the pose models are about 100 to 300 times cheaper as models, the frames pipeline is about **2.6 times faster
+end to end** on CPU, because MediaPipe takes about 1.3 s per video, hundreds of times the model. The pose report
+estimated 2 to 5 s per video; our machine is at the fast end of that. Decoding the video is the largest cost of the
+frames pipeline (the loader reads the whole video before sampling 16 frames). Caveat: one video, one machine; the
+MediaPipe time depends somewhat on the content of the video.
 
 ### 6.3 Errors
 
@@ -110,7 +134,8 @@ monday / hot, time / teacher; do the frames models make the same mistakes?]
   * Own split, not the official INCLUDE-50 split.
   * Keypoints come from cached 224 x 224 frames, not from the original videos; hands were found in only 55 to 67 % of frames.
   * All signers are from one recording setting; other signers, backgrounds and regions are untested.
-  * Speed was measured on [TBD: machine]; other hardware changes absolute times, and tiny models even run slower with more CPU threads.
+  * Speed was measured on one laptop (RTX 2050, Balanced power plan); other hardware changes absolute times, and tiny
+    models even run slower with more CPU threads. End-to-end time was measured on one video only.
 
 ## 8. Demo and reproducibility
 
