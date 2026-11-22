@@ -81,6 +81,32 @@ def test_predictor_on_a_raw_video(trained, fake_video):
     assert timing["total_ms"] >= timing["model_ms"] > 0
 
 
+def test_e2e_only_updates_the_report_and_keeps_the_rest(trained, fake_video, monkeypatch):
+    """--e2e-only adds the raw-video timing to an existing report without touching the model-only numbers."""
+    from src.evaluation import benchmark_speed
+
+    benchmark_checkpoint(trained["cnn"], "cpu", warmup=1, runs=3, throughput_batch=4)
+    report = trained["cnn"].parent / "benchmark_cpu.json"
+    before = json.loads(report.read_text())
+    assert before["end_to_end"] is None
+    monkeypatch.setattr("sys.argv", ["benchmark_speed", "--checkpoint", str(trained["cnn"]), "--device", "cpu",
+                                     "--video", str(fake_video), "--e2e-only", "--e2e-runs", "2"])
+    benchmark_speed.main()
+    after = json.loads(report.read_text())
+    e2e = after["end_to_end"]
+    assert e2e["total_ms"] >= e2e["model_ms"] > 0 and e2e["runs"] == 2 and "python" in e2e
+    assert {k: after[k] for k in ("gflops", "params_m", "latency_ms", "latency_ms_1thread")} == \
+           {k: before[k] for k in ("gflops", "params_m", "latency_ms", "latency_ms_1thread")}
+
+
+def test_e2e_only_without_a_video_is_an_error(trained, monkeypatch):
+    from src.evaluation import benchmark_speed
+
+    monkeypatch.setattr("sys.argv", ["benchmark_speed", "--checkpoint", str(trained["cnn"]), "--e2e-only"])
+    with pytest.raises(SystemExit):
+        benchmark_speed.main()
+
+
 def test_predictor_input_equals_training_input(trained, dummy_root):
     """The predictor must feed the model exactly what the dataset feeds it for the same cached frames."""
     from src.data import build_dataset

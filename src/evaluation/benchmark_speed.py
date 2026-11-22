@@ -3,6 +3,7 @@
     python -m src.evaluation.benchmark_speed --checkpoint results/pose_transformer/best.pt --device cpu
     python -m src.evaluation.benchmark_speed --checkpoint "results/*/best.pt" --device cpu cuda
     python -m src.evaluation.benchmark_speed --checkpoint "results/*/best.pt" --device cpu --video clip.mov
+    python -m src.evaluation.benchmark_speed --checkpoint results/pose_lstm/best.pt --device cpu --video clip.mov --e2e-only
 
 For every checkpoint and device it writes ``benchmark_<device>.json`` next to the checkpoint:
 
@@ -137,7 +138,8 @@ def measure_end_to_end(checkpoint: Path, device: str, video: Path, runs: int) ->
         return {"error": str(e)}
     keys = timings[0].keys()
     out = {k: float(statistics.mean(t[k] for t in timings)) for k in keys}
-    out.update({"runs": runs, "video": video.name})
+    # Which environment measured it (the pose models run in a separate Python 3.12 environment with MediaPipe).
+    out.update({"runs": runs, "video": video.name, "python": platform.python_version(), "torch": torch.__version__})
     return out
 
 
@@ -200,7 +202,30 @@ def main() -> None:
     p.add_argument("--throughput-batch", type=int, default=16)
     p.add_argument("--video", default=None, help="a raw video file: also measure raw video -> prediction")
     p.add_argument("--e2e-runs", type=int, default=5)
+    p.add_argument("--e2e-only", action="store_true",
+                   help="only (re)measure the end-to-end time with --video and store it in the existing "
+                        "benchmark_<device>.json; the other numbers are kept. Use it for the pose models, "
+                        "which need MediaPipe and so run in a separate Python environment.")
     args = p.parse_args()
+    if args.e2e_only and not args.video:
+        p.error("--e2e-only needs --video")
+
+    if args.e2e_only:
+        for dev in args.device:
+            for ckpt in expand_checkpoints(args.checkpoint):
+                report = ckpt.parent / f"benchmark_{dev}.json"
+                if not report.exists():
+                    log.warning(f"{report} not found: run the full benchmark first (without --e2e-only)")
+                    continue
+                res = json.loads(report.read_text())
+                res["end_to_end"] = measure_end_to_end(ckpt, dev, Path(args.video), args.e2e_runs)
+                report.write_text(json.dumps(res, indent=2))
+                e2e = res["end_to_end"]
+                log.info(f"{res['experiment']} [{dev}] end-to-end: " +
+                         (f"{e2e['total_ms']:.0f} ms (decode {e2e['decode_resize_ms']:.0f}, features "
+                          f"{e2e['features_ms']:.0f}, model {e2e['model_ms']:.0f})" if "total_ms" in e2e
+                          else f"unavailable: {e2e['error'][:80]}"))
+        return
 
     for dev in args.device:
         if dev == "cuda" and not torch.cuda.is_available():
