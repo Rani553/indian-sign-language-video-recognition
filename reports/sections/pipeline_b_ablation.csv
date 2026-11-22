@@ -1,0 +1,15 @@
+experiment,feature_dim,params_M,best_val_acc,best_val_top5,best_epoch,epochs_run,sec_per_epoch_colab_gpu,test_acc,test_top5
+pose_lstm,536,0.759,0.9343,0.9927,42,64,1.07,0.8832,0.9781
+pose_lstm_hands_only,494,0.753,0.9416,0.9708,63,84,0.95,,
+pose_lstm_body_only,42,0.694,0.9416,0.9927,68,89,0.82,,
+pose_lstm_no_velocity,269,0.724,0.927,0.9781,27,48,1.0,,
+pose_lstm_no_aug,536,0.759,0.9416,0.9781,32,53,0.73,,
+pose_lstm_16f,536,0.759,0.9197,1.0,23,44,0.99,,
+pose_lstm_mirror,536,0.759,0.927,0.9781,57,78,1.04,,
+pose_transformer,536,0.482,0.9562,1.0,66,88,1.1,0.9343,0.9854
+pose_transformer_hands_only,494,0.477,0.927,0.9562,54,75,1.1,,
+pose_transformer_body_only,42,0.418,0.9343,0.9927,65,86,0.91,,
+pose_transformer_no_velocity,269,0.448,0.9416,0.9927,40,61,1.04,,
+pose_transformer_no_aug,536,0.482,0.9416,0.9927,52,73,0.77,,
+pose_transformer_16f,536,0.482,0.9489,1.0,44,65,1.01,,
+pose_transformer_mirror,536,0.482,0.9416,0.9927,80,100,1.03,,
