@@ -49,15 +49,14 @@ One factor is changed at a time from the baseline; everything else is identical 
 |---|---|---|---|---|---|---|---|
 | `cnn_lstm_mobilenet_v2` | baseline (MobileNetV2, 16 frames, freeze 3 ep, mean pool) | 5.40 | 0.949 | 0.927 | 1.000 | 30 | 35 |
 | `cnn_lstm_resnet18` | backbone ResNet18 | 12.78 | 0.883 | 0.861 | 0.993 | 30 | 39 |
-| `cnn_lstm_efficientnet_b0_run1` | backbone EfficientNet-B0 (checkpoint lost) | 7.18 | 0.964 | 0.934 | 1.000 | 28 | 42 |
-| `cnn_lstm_efficientnet_b0` | the same run repeated (this checkpoint is shared) | 7.18 | 0.971 | 0.978 | 1.000 | 29 | 41 |
+| `cnn_lstm_efficientnet_b0` | backbone EfficientNet-B0 | 7.18 | 0.971 | 0.978 | 1.000 | 29 | 41 |
 | `cnn_lstm_mobilenet_v2_8f` | 8 frames instead of 16 | 5.40 | 0.905 | 0.912 | 1.000 | 30 | 18 |
 | `cnn_lstm_mobilenet_v2_frozen` | CNN frozen the whole run | 5.40 | 0.467 | 0.453 | 0.927 | 30 | 36 |
 | `cnn_lstm_mobilenet_v2_finetune` | CNN trained from epoch 0 | 5.40 | 0.942 | 0.920 | 0.993 | 28 | 37 |
 | `cnn_lstm_mobilenet_v2_pool_last` | last-step pooling | 5.40 | 0.759 | 0.745 | 0.993 | 30 | 38 |
 | `cnn_lstm_mobilenet_v2_pool_max` | max pooling | 5.40 | 0.942 | 0.934 | 0.993 | 30 | 39 |
 
-Test accuracy in videos (of 137): baseline 127, EfficientNet-B0 128 (first run) and 134 (repeated run), max pooling 128, fine-tune from start 126, 8 frames 125, ResNet18 118, last-step pooling 102, frozen CNN 62.
+Test accuracy in videos (of 137): baseline 127, EfficientNet-B0 134, max pooling 128, fine-tune from start 126, 8 frames 125, ResNet18 118, last-step pooling 102, frozen CNN 62.
 
 ### Discussion
 
@@ -68,14 +67,14 @@ Test accuracy in videos (of 137): baseline 127, EfficientNet-B0 128 (first run) 
 
 **Differences that are small or not conclusive**
 
-* **Backbone.** The first EfficientNet-B0 run (0.934, 128 videos) lost its checkpoint when the Kaggle session ended, so the same configuration was run again with the same seed (0.978, 134 videos; best validation accuracy 0.971 against 0.964). Two runs of one configuration therefore differ by six test videos, which is larger than most differences in this table, and we do not claim that EfficientNet-B0 is better than MobileNetV2 (0.927, 127 videos). ResNet18 is lower (0.861, 118 videos), but its validation accuracy was still increasing at epoch 30, so it was probably not converged; a longer run was not done. EfficientNet-B0 reaches a training accuracy of 0.99, so it overfits more than MobileNetV2.
+* **Backbone.** EfficientNet-B0 (0.978, 134 videos) is seven videos ahead of MobileNetV2 (0.927, 127 videos), but with one run per model we do not claim that it is better: an earlier run of the same configuration, whose checkpoint was lost, reached 0.934 (128 videos), so a single run can vary by about six videos. ResNet18 is lower (0.861, 118 videos), but its validation accuracy was still increasing at epoch 30, so it was probably not converged; a longer run was not done. EfficientNet-B0 reaches a training accuracy of 0.99, so it overfits more than MobileNetV2.
 * **Pooling.** Max (0.934) and mean (0.927) pooling differ by one video: no evidence of a difference.
 * **Freeze schedule.** Fine-tuning from the first epoch (0.920) and freezing the CNN for 3 epochs first (0.927) differ by one video. Freezing for the first epochs gave no measurable benefit on this dataset; fine-tuning itself is what matters.
 * **Number of frames.** 8 frames cost about 1.5 points of test accuracy (0.912 against 0.927, two videos) and 4.4 points of validation accuracy, and halve the time per epoch (18 s against 35 s). Within the noise of a single run this suggests that 8 frames are nearly as accurate at about half the cost, which would be worth confirming with more seeds.
 
 **Accuracy against size and speed.** Parameter counts range from 5.40 M (MobileNetV2) to 12.78 M (ResNet18) without a matching accuracy gain, so the lightest model is the sensible default. The time per epoch was almost the same for all backbones (35 to 42 s) and for the frozen run, but half as long with 8 frames. This suggests that training time here is limited by loading and augmenting frames on the CPU rather than by the GPU; we did not profile this. Inference speed on CPU and GPU is measured separately in the comparison with the pose-keypoint pipeline.
 
-**Model for the comparison with Pipeline B.** The best checkpoint by validation accuracy is the repeated EfficientNet-B0 run (val 0.971, test 0.978); it was chosen on validation accuracy, not on the test result. The MobileNetV2 baseline (test 0.927) has fewer parameters, and the first EfficientNet-B0 run (test 0.934) shows that the gap between the two is within the run-to-run variation. Both checkpoints are provided.
+**Model for the comparison with Pipeline B.** The best checkpoint by validation accuracy is EfficientNet-B0 (val 0.971, test 0.978). The MobileNetV2 baseline (test 0.927) has fewer parameters, and the gap between the two is within the run-to-run variation mentioned above. Both checkpoints are provided.
 
 ## 6. Limitations
 
