@@ -1,6 +1,6 @@
 experiment,params_M,best_val_acc,best_epoch,test_acc,test_top5,epochs_run,sec_per_epoch
 cnn_lstm_mobilenet_v2,5.4,0.9489,25,0.927,1.0,30,35.0
-cnn_lstm_efficientnet_b0,7.18,0.9635,19,0.9343,1.0,28,42.0
+cnn_lstm_efficientnet_b0,7.18,0.9708,20,0.9781,1.0,29,40.8
 cnn_lstm_mobilenet_v2_8f,5.4,0.9051,21,0.9124,1.0,30,17.8
 cnn_lstm_mobilenet_v2_finetune,5.4,0.9416,19,0.9197,0.9927,28,37.4
 cnn_lstm_mobilenet_v2_frozen,5.4,0.4672,24,0.4526,0.927,30,36.5

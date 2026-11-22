@@ -1,14 +1,15 @@
 # Pipeline B (Member 3): MediaPipe keypoints -> (Bi)LSTM with attention pooling. Inherits the shared data settings.
+# data.yaml supplies the paths, the dataset and the keypoint options; only what is specific to this model is set here.
 _base_: data.yaml
 
 experiment: pose_lstm   # results/<experiment>/ ; change it when you change the model (see ablations)
-input_type: keypoints
+input_type: keypoints   # tells the data loader to build a KeypointDataset (not frames)
 
 model:
   name: pose_lstm
-  hidden_size: 128
+  hidden_size: 128            # kept small because there are only 684 training videos (not tuned)
   num_layers: 2
-  bidirectional: true
+  bidirectional: true         # the whole clip is known, so the LSTM may read it forwards and backwards
   dropout: 0.3
   pooling: attention          # attention | mean | max | last
 
@@ -19,8 +20,8 @@ keypoints:                    # only what differs from data.yaml; the rest (part
 
 augment:                      # keypoint augmentation, one random draw per clip (see src/features/keypoint_features.py)
   enabled: true               # ablation: false
-  scale: 0.10
-  rotate_deg: 8
+  scale: 0.10                 # all values are small on purpose: a keypoint stays a keypoint, we only
+  rotate_deg: 8               # imitate small differences in how the signer stands and how the camera sees them
   shift: 0.10
   noise: 0.01
   hand_dropout: 0.20          # chance per hand to lose a short span, like MediaPipe misses
@@ -29,15 +30,15 @@ augment:                      # keypoint augmentation, one random draw per clip 
 
 train:
   epochs: 100                 # the model is tiny: an epoch takes seconds
-  batch_size: 32
+  batch_size: 32              # larger than Pipeline A (8) because the input is a small vector, not 16 images
   lr: 1.0e-3
-  weight_decay: 1.0e-2
+  weight_decay: 1.0e-2        # a common AdamW value (Pipeline A uses 1e-4); not tuned
   warmup_epochs: 3
-  label_smoothing: 0.1
-  grad_clip: 1.0
+  label_smoothing: 0.1        # stops the model from becoming over-confident on a small training set
+  grad_clip: 1.0              # LSTMs can have exploding gradients; this caps them
   grad_accum_steps: 1
   amp: true                   # mixed precision, GPU only
-  early_stopping_patience: 20
+  early_stopping_patience: 20 # stop when the validation accuracy has not improved for 20 epochs
   num_workers: 2
   resume: true                # re-running the same command continues from last.pt
   tensorboard: false

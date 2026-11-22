@@ -10,7 +10,7 @@ Recognise isolated ISL signs (one word per clip) from short videos, to support a
 | Input | 16 RGB frames, 224×224 | 32 frames of MediaPipe Holistic landmarks (body + both hands) |
 | Spatial features | Pretrained CNN per frame (MobileNetV2 / ResNet18 / EfficientNet-B0) | Normalised coordinates, wrist-relative hand shape, velocity |
 | Temporal model | (Bi)LSTM - LRCN (Donahue et al., 2015) | (Bi)LSTM with attention pooling **or** Transformer encoder |
-| Model size | ~3-13 M params, ~1-5 GFLOPs/clip | ~1-3 M params, ~0.1-0.2 GFLOPs/clip |
+| Model size | ~5-13 M params, 9.7-12.4 GFLOPs/clip (MobileNetV2 / EfficientNet-B0, measured) | 0.5-0.8 M params, 0.03-0.05 GFLOPs/clip (measured) |
 
 Dataset: **INCLUDE / INCLUDE-50** (Sridhar et al., 2020). See [`data/README.md`](data/README.md).
 
@@ -22,7 +22,7 @@ Dataset: **INCLUDE / INCLUDE-50** (Sridhar et al., 2020). See [`data/README.md`]
 git clone https://github.com/Rani553/indian-sign-language-video-recognition.git && cd indian-sign-language-video-recognition
 pip install -r requirements.txt
 python scripts/make_dummy_data.py --data-root /tmp/isl_dummy --fake-keypoints
-pytest                                   # 19 tests: data, features, models, full train->eval loop
+pytest                                   # data, features, models, evaluation, full train->eval loop
 ```
 
 ## Full pipeline (real data)
