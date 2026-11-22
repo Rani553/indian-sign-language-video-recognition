@@ -72,6 +72,21 @@ def make_dummy_data(data_root: Path, num_classes: int = 6, videos_per_class: int
     return splits
 
 
+def make_fake_keypoints(data_root: Path, frames: int = 24, seed: int = 0) -> Path:
+    """Write synthetic MediaPipe-style keypoints for every video of an existing dummy dataset."""
+    from src.features.keypoint_io import fake_keypoints, save_keypoints
+
+    processed = data_root / "processed"
+    label_map = json.loads((processed / "splits" / "label_map.json").read_text())
+    kp_dir = processed / "keypoints"
+    kp_dir.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(seed)
+    for r in pd.read_csv(processed / "splits" / "metadata.csv").itertuples(index=False):
+        save_keypoints(kp_dir / f"{r.video_id}.npz",
+                       fake_keypoints(label_map[r.label], len(label_map), frames, rng))
+    return kp_dir
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--data-root", required=True, help="Folder to write into (processed/ is created inside)")
@@ -81,8 +96,7 @@ def main() -> None:
     p.add_argument("--size", type=int, default=64, help="Frame side in pixels (kept small: real data is 224)")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--fake-keypoints", action="store_true",
-                   help="Accepted for the README quick start; keypoint files are Member 3's format "
-                        "and are not generated here yet")
+                   help="Also write synthetic MediaPipe-style keypoints (processed/keypoints/*.npz)")
     args = p.parse_args()
 
     splits = make_dummy_data(Path(args.data_root), args.classes, args.videos_per_class,
@@ -90,7 +104,8 @@ def main() -> None:
     print("Dummy data written to", Path(args.data_root) / "processed",
           "|", ", ".join(f"{k}={len(v)}" for k, v in splits.items()))
     if args.fake_keypoints:
-        print("Note: --fake-keypoints is a no-op until Member 3 defines the keypoint .npz format.")
+        kp_dir = make_fake_keypoints(Path(args.data_root), args.frames, args.seed)
+        print(f"Fake keypoints written to {kp_dir}")
     print(f"Use it with:  ISL_DATA_ROOT={args.data_root}  and  --set frames.image_size={args.size}")
 
 
