@@ -1,13 +1,14 @@
 # Pipeline B (Member 3): MediaPipe keypoints -> Transformer encoder with a CLS token.
 # Inherits pose_lstm.yaml (keypoints, augmentation, training settings) and changes the model.
+# Sharing everything else is what makes the LSTM vs Transformer comparison fair: only the model differs.
 _base_: pose_lstm.yaml
 
 experiment: pose_transformer
 
 model:
   name: pose_transformer
-  d_model: 128
-  nhead: 4
+  d_model: 128                # same width as the LSTM's hidden size
+  nhead: 4                    # d_model must be divisible by this
   num_layers: 3
   dim_feedforward: 256
   dropout: 0.2
@@ -15,4 +16,4 @@ model:
 
 train:
   lr: 5.0e-4                  # Transformers prefer a smaller learning rate than the LSTM
-  warmup_epochs: 5
+  warmup_epochs: 5            # a longer warm-up than the LSTM: Transformers are commonly less stable in the first steps

@@ -24,13 +24,19 @@ from src.features.keypoint_io import load_keypoints
 class KeypointDataset(Dataset):
     def __init__(self, df: pd.DataFrame, keypoints_dir: str | Path, kp_cfg: dict,
                  train: bool = False, aug: dict | None = None):
-        self.df = df.reset_index(drop=True)
+        self.df = df.reset_index(drop=True)   # clean 0..n-1 index, so __getitem__(i) is always row i
         self.keypoints_dir = Path(keypoints_dir)
         self.train = train
         # Augmentation settings come from the top-level ``augment:`` section (like Pipeline A).
+        # Both places are merged so that either one can set them; ``aug`` wins if both do.
         self.cfg = {"keypoints": {**kp_cfg, "augment": {**(kp_cfg.get("augment") or {}), **(aug or {})}}}
         self.feature_dim = feature_dim(self.cfg)   # the model needs it; see build_dataloaders
+        # Cache of the prepared (gap-filled, normalised) clips. The whole dataset is only a few
+        # MB, and without this the same slow interpolation would run again in every epoch.
+        # Each DataLoader worker process fills its own copy.
         self._cache: dict[str, dict] = {}
+        # Created lazily in __getitem__, not here: it must be created inside the worker process,
+        # otherwise every worker would start from the same random state and produce the same augmentation.
         self._rng: np.random.Generator | None = None
 
     def __len__(self) -> int:
@@ -40,6 +46,7 @@ class KeypointDataset(Dataset):
         if video_id not in self._cache:
             path = self.keypoints_dir / f"{video_id}.npz"
             if not path.exists():
+                # Say what to do, not just what is wrong: the most likely cause is a skipped step.
                 raise FileNotFoundError(f"{path} not found. Run `python -m src.features.extract_keypoints` first.")
             self._cache[video_id] = prepare_clip(load_keypoints(path), self.cfg)
         return self._cache[video_id]
@@ -50,5 +57,7 @@ class KeypointDataset(Dataset):
             # torch.initial_seed() differs per worker but is fixed by the DataLoader generator,
             # so augmentation is reproducible for a given config.seed.
             self._rng = np.random.default_rng(torch.initial_seed() % (2 ** 32))
+        # At evaluation time self.train is False, so no augmentation: the same video always gives the same input.
         x = features_from_prepared(self._prepared(row["video_id"]), self.cfg, self.train, self._rng)
+        # float32 features, int64 label: what the loss function (CrossEntropy) expects.
         return torch.from_numpy(x), torch.tensor(int(row["label_idx"]))
